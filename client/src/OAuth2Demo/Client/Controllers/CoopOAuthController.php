@@ -34,7 +34,7 @@ class CoopOAuthController extends BaseController
             'response_type' => 'code',
             'client_id' => 'Top Cluckd',
             'redirect_uri' => $redirectUri,
-            'scope' => 'profile eggs-count',
+            'scope' => 'eggs-count profile',
         ]);
 
         return $this->redirect($url);
@@ -46,14 +46,28 @@ class CoopOAuthController extends BaseController
      * Here, we will get the authorization code from the request, exchange
      * it for an access token, and maybe do some other setup things.
      *
-     * @param  Application             $app
-     * @param  Request                 $request
+     * @param Application $app
+     * @param Request $request
      * @return string|RedirectResponse
+     * @throws \Exception
+     * @noinspection NullPointerExceptionInspection
      */
     public function receiveAuthorizationCode(Application $app, Request $request)
     {
         // equivalent to $_GET['code']
         $code = $request->get('code');
+
+        if (!$code) {
+            $error = $request->get('error');
+            $errorDescription = $request->get('error_description');
+
+            return $this->render('failed_authorization.twig', [
+                'response' => [
+                    'error' => $error,
+                    'error_description' => $errorDescription,
+                ]
+            ]);
+        }
 
         // create our http client (Guzzle)
         $http = new Client('http://coop.apps.knpuniversity.com', array(
@@ -79,16 +93,31 @@ class CoopOAuthController extends BaseController
         $response = $request->send();
         $responseBody =  $response->getBody(true);
         $responseArr = json_decode($responseBody, true);
+
+        if (!isset($responseArr['access_token'])) {
+            return $this->render('failed_token_request.twig', [
+                'response' => $responseArr ? $responseArr : $response
+            ]);
+        }
+
         $accessToken = $responseArr['access_token'];
         $expireIn = $responseArr['expires_in'];
+        $expiresAt = new \DateTime("+$expireIn seconds");
 
         $request  = $http->get('/api/me');
 
         $request->addHeader('Authorization', 'Bearer '.$accessToken);
         $response = $request->send();
 
-        echo $response->getBody();die;
+        $json = json_decode($response->getBody(), true);
 
-        die('Implement this in CoopOAuthController::receiveAuthorizationCode');
+        $user = $this->getLoggedInUser();
+        $user->coopAccessToken = $accessToken;
+        $user->coopUserId = $json['id'];
+        $user->coopAccessExpiresAt = $expiresAt;
+        $this->saveUser($user);
+
+        // redirects to the homepage
+        return $this->redirect($this->generateUrl('home'));
     }
 }
