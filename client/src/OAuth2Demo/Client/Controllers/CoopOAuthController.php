@@ -24,7 +24,20 @@ class CoopOAuthController extends BaseController
      */
     public function redirectToAuthorization(Request $request)
     {
-        die('Implement this in CoopOAuthController::redirectToAuthorization');
+        $redirectUri = $this->generateUrl(
+            'coop_authorize_redirect',
+            [],
+            true
+        );
+
+        $url = 'http://coop.apps.symfonycasts.com/authorize?'.http_build_query([
+            'response_type' => 'code',
+            'client_id' => 'Top Cluckd',
+            'redirect_uri' => $redirectUri,
+            'scope' => 'profile eggs-count',
+        ]);
+
+        return $this->redirect($url);
     }
 
     /**
@@ -41,6 +54,40 @@ class CoopOAuthController extends BaseController
     {
         // equivalent to $_GET['code']
         $code = $request->get('code');
+
+        // create our http client (Guzzle)
+        $http = new Client('http://coop.apps.knpuniversity.com', array(
+            'request.options' => array(
+                'exceptions' => false,
+            )
+        ));
+
+        $redirectUri = $this->generateUrl(
+            'coop_authorize_redirect',
+            [],
+            true
+        );
+
+        $request = $http->post('/token', null, [
+            'client_id' => 'Top Cluckd',
+            'client_secret' => 'b7c8d0bdf9e39f4494ac9badd9a8a4a7',
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => $redirectUri,
+        ]);
+
+        $response = $request->send();
+        $responseBody =  $response->getBody(true);
+        $responseArr = json_decode($responseBody, true);
+        $accessToken = $responseArr['access_token'];
+        $expireIn = $responseArr['expires_in'];
+
+        $request  = $http->get('/api/me');
+
+        $request->addHeader('Authorization', 'Bearer '.$accessToken);
+        $response = $request->send();
+
+        echo $response->getBody();die;
 
         die('Implement this in CoopOAuthController::receiveAuthorizationCode');
     }
