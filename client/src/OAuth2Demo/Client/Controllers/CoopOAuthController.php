@@ -2,6 +2,7 @@
 
 namespace OAuth2Demo\Client\Controllers;
 
+use OAuth2Demo\Client\Security\User;
 use Silex\Application;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -111,7 +112,15 @@ class CoopOAuthController extends BaseController
 
         $json = json_decode($response->getBody(), true);
 
-        $user = $this->getLoggedInUser();
+        if ($this->isUserLoggedIn()) {
+            $user = $this->getLoggedInUser();
+        } else {
+            $user = $this->findOrCreateUser($json);
+
+            $this->loginUser($user);
+        }
+
+
         $user->coopAccessToken = $accessToken;
         $user->coopUserId = $json['id'];
         $user->coopAccessExpiresAt = $expiresAt;
@@ -120,4 +129,24 @@ class CoopOAuthController extends BaseController
         // redirects to the homepage
         return $this->redirect($this->generateUrl('home'));
     }
+
+    private function findOrCreateUser(array  $meData): User
+    {
+        if ($user = $this->findUserByCOOPId($meData['id'])) {
+            return $user;
+        }
+
+        if ($user = $this->findUserByEmail($meData['email'])) {
+            // if you don't trust the email, stop and force them to type
+            // in their TopCluck password to prove their identity
+            return $user;
+        }
+
+        return $this->createUser(
+            $meData['email'],
+            '',
+            $meData['firstName'],
+            $meData['lastName']
+        );
+   }
 }
